@@ -30,7 +30,7 @@ size_t str_lcpy(char *dst, const char *src, size_t size);
 int bind_check(int port);
 pid_t gettid(void);
 int get_cpu_cores(void);
-int get_type(const char *filename, char *type);
+int zget_type(const char *filename, char *type);
 int is_file(const char *filename);
 int is_img(const char *filename);
 int is_dir(const char *path);

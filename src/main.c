@@ -107,6 +107,7 @@ static void settings_init(void) {
     snprintf(settings.server_name, 128, "zimg/%s", settings.version);
     settings.headers = NULL;
     settings.etag = 0;
+    settings.twice_forbidden = 0;
     settings.up_access = NULL;
     settings.down_access = NULL;
     settings.admin_access = NULL;
@@ -222,6 +223,11 @@ static int load_conf(const char *conf) {
     lua_getglobal(L, "etag");
     if (lua_isnumber(L, -1))
         settings.etag = (int)lua_tonumber(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getglobal(L, "twice_forbidden");
+    if ( lua_isnumber(L, -1))
+	settings.twice_forbidden = (int)lua_tonumber(L, -1);
     lua_pop(L, 1);
 
     lua_getglobal(L, "upload_rule");

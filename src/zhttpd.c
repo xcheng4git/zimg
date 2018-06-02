@@ -416,7 +416,7 @@ int on_header_value(multipart_parser* p, const char *at, size_t length) {
                 nameend[0] = '\0';
                 char fileType[32];
                 LOG_PRINT(LOG_DEBUG, "File[%s]", filename);
-                if (get_type(filename, fileType) == -1) {
+                if (zget_type(filename, fileType) == -1) {
                     LOG_PRINT(LOG_DEBUG, "Get Type of File[%s] Failed!", filename);
                     mp_arg->check_name = -1;
                 } else {
@@ -972,6 +972,50 @@ void get_request_cb(evhtp_request_t *req, void *arg) {
     zimg_req -> sv = sv;
     zimg_req -> thr_arg = thr_arg;
 
+    /*
+	for each md5, recording the hit times.      
+	if get the file successfully twice, then return error status.
+	mutex is nessary, if reading is disable, then waiting
+    */
+     {
+	if ( settings.twice_forbidden == 1 ) {
+	    LOG_PRINT(LOG_DEBUG, "twice_forbidden enabled!");
+
+	    int lvl1 = str_hash(md5);
+	    int lvl2 = str_hash(md5 + 3);
+
+	    char whole_path[512];
+	    snprintf(whole_path, 512, "%s/%d/%d/%s", settings.img_path, lvl1, lvl2, md5);
+	    LOG_PRINT(LOG_DEBUG, "whole_path: %s", whole_path);
+
+	    if (is_dir(whole_path) == -1) {
+		LOG_PRINT(LOG_DEBUG, "Image %s is not existed!", md5);
+		goto err;
+	    }
+	    char visFile[512];
+	    struct stat statbuff;
+	    snprintf(visFile, 512, "%s/1.vis", whole_path);
+     	    if (stat(visFile, &statbuff) < 0 ) {
+		LOG_PRINT(LOG_DEBUG, "Visiting [%s] at the first times.", md5);
+		if (open(visFile, O_CREAT | O_EXCL, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH) < 0) {
+			LOG_PRINT(LOG_DEBUG, "Create vistation file [%s] error, conflict happened!", visFile);
+			goto err;
+		}
+	    } else {
+  	        snprintf(visFile, 512, "%s/2.vis", whole_path);
+  		if (stat(visFile, &statbuff) < 0 ) {
+			LOG_PRINT(LOG_DEBUG, "Visiting [%s] at the second times.", md5);
+			if (open(visFile, O_CREAT | O_EXCL, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH) < 0) {
+				LOG_PRINT(LOG_DEBUG, "Create vistation file [%s] error, conflict happened!", visFile);
+				goto err;
+			}
+		} else
+			goto beentwiced;
+	    }
+		
+	}
+     }
+
     int get_img_rst = -1;
     get_img_rst = settings.get_img(zimg_req, req);
 
@@ -984,6 +1028,7 @@ void get_request_cb(evhtp_request_t *req, void *arg) {
                       address, md5, width, height, proportion, gray, x, y, rotate, quality, zimg_req->fmt);
         goto err;
     }
+
     if (get_img_rst == 2) {
         LOG_PRINT(LOG_DEBUG, "Etag Matched Return 304 EVHTP_RES_NOTMOD.");
         if (type)
@@ -994,6 +1039,7 @@ void get_request_cb(evhtp_request_t *req, void *arg) {
         evhtp_send_reply(req, EVHTP_RES_NOTMOD);
         goto done;
     }
+    //////////////////////////////////////////////////////////////////////////
 
     len = evbuffer_get_length(req->buffer_out);
     LOG_PRINT(LOG_DEBUG, "get buffer length: %d", len);
@@ -1012,6 +1058,14 @@ void get_request_cb(evhtp_request_t *req, void *arg) {
     LOG_PRINT(LOG_DEBUG, "============get_request_cb() DONE!===============");
     goto done;
 
+beentwiced:
+    evbuffer_add_printf(req->buffer_out, "<html><body><h1>410 Gone!</h1></body></html>");
+    evhtp_headers_add_header(req->headers_out, evhtp_header_new("Server", settings.server_name, 0, 1));
+    evhtp_headers_add_header(req->headers_out, evhtp_header_new("Content-Type", "text/html", 0, 0));
+    evhtp_send_reply(req, EVHTP_RES_GONE);
+    LOG_PRINT(LOG_DEBUG, "============get_request_cb() already been twiced!===============");
+    goto done;
+
 forbidden:
     evbuffer_add_printf(req->buffer_out, "<html><body><h1>403 Forbidden!</h1></body></html>");
     evhtp_headers_add_header(req->headers_out, evhtp_header_new("Server", settings.server_name, 0, 1));
@@ -1026,6 +1080,7 @@ err:
     evhtp_headers_add_header(req->headers_out, evhtp_header_new("Content-Type", "text/html", 0, 0));
     evhtp_send_reply(req, EVHTP_RES_NOTFOUND);
     LOG_PRINT(LOG_DEBUG, "============get_request_cb() ERROR!===============");
+    goto done;
 
 done:
     free(fmt);

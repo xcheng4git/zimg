@@ -35,6 +35,7 @@
 #include "zhttpd.h"
 #include "zlscale.h"
 #include "cjson/cJSON.h"
+#include <mysql/mysql.h>
 
 int save_img(thr_arg_t *thr_arg, const char *buff, const int len, char *md5);
 int new_img(const char *buff, const size_t len, const char *save_name);
@@ -57,6 +58,23 @@ int save_img(thr_arg_t *thr_arg, const char *buff, const int len, char *md5) {
     int result = -1;
 
     LOG_PRINT(LOG_DEBUG, "Begin to Caculate MD5...");
+    /*
+    int fd = -1;
+    if ((fd = open("/home/shawn/Downloads/evidence.jpg", O_WRONLY | O_TRUNC | O_CREAT, 00644)) < 0) {
+        LOG_PRINT(LOG_DEBUG, "fd(%s) open failed!", "/home/shawn/Downloads/evidence.jpg");
+        goto done;
+    }
+
+    int wlen = write(fd, buff, len);
+    if (wlen == -1) {
+        LOG_PRINT(LOG_DEBUG, "write(%s) failed!", "/home/shawn/Downloads/evidence.jpg");
+    } else if (wlen < len) {
+        LOG_PRINT(LOG_DEBUG, "Only part of [%s] is been writed.", "/home/shawn/Downloads/evidence.jpg");
+    }
+    if (fd != -1)
+        close(fd);
+    return result;
+    */
     md5_state_t mdctx;
     md5_byte_t md_value[16];
     char md5sum[33];
@@ -148,7 +166,7 @@ done:
  */
 int new_img(const char *buff, const size_t len, const char *save_name) {
     int result = -1;
-    LOG_PRINT(LOG_DEBUG, "Start to Storage the New Image...");
+    LOG_PRINT(LOG_DEBUG, "Start to Storage the New Image. Size is %d", len);
     int fd = -1;
     int wlen = 0;
 
@@ -213,6 +231,32 @@ int get_img(zimg_req_t *req, evhtp_request_t *request) {
         goto err;
     }
 
+    char orig_path[512];
+    snprintf(orig_path, 512, "%s/0*0", whole_path);
+    LOG_PRINT(LOG_DEBUG, "0rig File Path: %s", orig_path);
+
+    if ( settings.twice_forbidden == 1 ) {
+	struct stat statbuff;
+	if (stat(orig_path, &statbuff) < 0 ) {
+		LOG_PRINT(LOG_DEBUG, "Get [%s] size error.", orig_path);
+		goto err;
+	}
+	int fd = -1;
+	buff = (char*)malloc(statbuff.st_size);
+	if ((fd = open(orig_path, O_RDONLY)) < 0) {
+	    LOG_PRINT(LOG_DEBUG, "fd(%s) open failed!", orig_path);
+	    goto err;
+	}
+	len = read(fd, buff, statbuff.st_size);
+	if (len < statbuff.st_size) {
+	    LOG_PRINT(LOG_DEBUG, "read(%s) failed!", orig_path);
+	    close(fd);
+	    goto err;
+	}
+        close(fd);	
+	goto done;
+    }
+
     if (settings.script_on == 1 && req->type != NULL)
         snprintf(rsp_cache_key, CACHE_KEY_SIZE, "%s:%s", req->md5, req->type);
     else {
@@ -228,10 +272,6 @@ int get_img(zimg_req_t *req, evhtp_request_t *request) {
         goto done;
     }
     LOG_PRINT(LOG_DEBUG, "Start to Find the Image...");
-
-    char orig_path[512];
-    snprintf(orig_path, 512, "%s/0*0", whole_path);
-    LOG_PRINT(LOG_DEBUG, "0rig File Path: %s", orig_path);
 
     char rsp_path[512];
     if (settings.script_on == 1 && req->type != NULL)
@@ -299,30 +339,29 @@ int get_img(zimg_req_t *req, evhtp_request_t *request) {
                 MagickGetImageLength(im, &size);
                 LOG_PRINT(LOG_DEBUG, "image size = %d", size);
                 if (size < CACHE_MAX_SIZE) {
-                    MagickResetIterator(im);
-                    char *new_buff = (char *)MagickGetImageBlob(im, &len);
-                    if (new_buff == NULL) {
-                        LOG_PRINT(LOG_DEBUG, "Webimg Get Original Blob Failed!");
-                        goto err;
-                    }
-                    set_cache_bin(req->thr_arg, req->md5, new_buff, len);
-                    free(new_buff);
+		            MagickResetIterator(im);
+		            char *new_buff = (char *)MagickGetImageBlob(im, &len);
+		            if (new_buff == NULL) {
+		                LOG_PRINT(LOG_DEBUG, "Webimg Get Original Blob Failed!");
+		                goto err;
+		            }
+		            set_cache_bin(req->thr_arg, req->md5, new_buff, len);
+		            free(new_buff);
+		    }
                 }
             }
-        }
+		if (settings.script_on == 1 && req->type != NULL)
+		    ret = lua_convert(im, req);
+		else
+		    ret = convert(im, req);
+		if (ret == -1) goto err;
+		if (ret == 0) to_save = false;
 
-        if (settings.script_on == 1 && req->type != NULL)
-            ret = lua_convert(im, req);
-        else
-            ret = convert(im, req);
-        if (ret == -1) goto err;
-        if (ret == 0) to_save = false;
-
-        buff = (char *)MagickGetImageBlob(im, &len);
-        if (buff == NULL) {
-            LOG_PRINT(LOG_DEBUG, "Webimg Get Blob Failed!");
-            goto err;
-        }
+		buff = (char *)MagickGetImageBlob(im, &len);
+		if (buff == NULL) {
+		    LOG_PRINT(LOG_DEBUG, "Webimg Get Blob Failed!");
+		    goto err;
+		}
     } else {
         to_save = false;
         fstat(fd, &f_stat);
@@ -366,6 +405,7 @@ int get_img(zimg_req_t *req, evhtp_request_t *request) {
     if (len < CACHE_MAX_SIZE) {
         set_cache_bin(req->thr_arg, rsp_cache_key, buff, len);
     }
+
 
 done:
     if (settings.etag == 1) {

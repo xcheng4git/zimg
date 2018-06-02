@@ -43,7 +43,7 @@ size_t str_lcpy(char *dst, const char *src, size_t size);
 int bind_check(int port);
 pid_t gettid(void);
 int get_cpu_cores(void);
-int get_type(const char *filename, char *type);
+int zget_type(const char *filename, char *type);
 int is_file(const char *filename);
 int is_img(const char *filename);
 int is_dir(const char *path);
@@ -222,7 +222,7 @@ int get_cpu_cores(void) {
  *
  * @return 1 for success and -1 for fail.
  */
-int get_type(const char *filename, char *type) {
+int zget_type(const char *filename, char *type) {
     char *flag, *tmp;
     if ((flag = strchr(filename, '.')) == 0) {
         LOG_PRINT(LOG_DEBUG, "FileName [%s] Has No '.' in It.", filename);

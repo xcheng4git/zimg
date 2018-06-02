@@ -32,7 +32,6 @@
 #include "zaccess.h"
 #include "zhttpd.h"
 #include "multipart-parser-c/multipart_parser.h"
-
 #ifndef PROJECT_VERSION
 #define PROJECT_VERSION "3.2.0"
 #endif
@@ -80,6 +79,7 @@ struct setting {
     char server_name[128];
     zimg_headers_conf_t *headers;
     int etag;
+    int twice_forbidden;
     zimg_access_conf_t *up_access;
     zimg_access_conf_t *down_access;
     zimg_access_conf_t *admin_access;

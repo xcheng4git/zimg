@@ -2,7 +2,7 @@
 
 --server config
 --是否后台运行
-is_daemon       = 1
+is_daemon       = 0
 --绑定IP
 ip              = '0.0.0.0'
 --端口
@@ -19,8 +19,9 @@ pwd             = io.popen('pwd'):read('*l')
 --返回时所带的HTTP header
 headers         = 'Cache-Control:max-age=7776000'
 --是否启用etag缓存
-etag            = 1
+etag            = 0
 
+twice_forbidden  = 1
 --access config
 --support mask rules like 'allow 10.1.121.138/24'
 --NOTE: remove rule can improve performance
@@ -77,7 +78,7 @@ script_name     = pwd .. '/script/process.lua'
 format          = 'jpeg'
 --quality value: 1~100(default: 75)
 --默认保存新图的质量
-quality         = 75
+quality         = 100
 
 --storage config
 --zimg support 3 ways for storage images
